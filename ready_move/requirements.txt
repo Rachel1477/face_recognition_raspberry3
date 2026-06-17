@@ -1,0 +1,14 @@
+# 树莓派人脸识别门禁系统依赖
+
+# 图像处理（需要 OpenCV 4.7.0+ 以支持 Face 模块）
+opencv-python==4.10.0.84
+numpy==1.26.4
+
+# MQTT 通信
+paho-mqtt==1.6.1
+
+# HTTP 请求
+requests==2.31.0
+
+# GPIO 控制（树莓派专用）
+# RPi.GPIO==0.7.1  # 在树莓派上安装
