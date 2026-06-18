@@ -10,7 +10,6 @@ from datetime import datetime
 from app.database import get_db
 from app.models import User, AccessLog
 from app.schemas import LogRequest, LogResponse, AccessLogListResponse, AccessLogResponse
-from app.utils.face_utils import face_processor
 
 router = APIRouter(prefix="/logs", tags=["访问日志"])
 
@@ -109,10 +108,13 @@ def get_access_logs(
     - **user_id**: 按用户ID筛选
     """
     try:
-        # 构建查询
+        if status == "":
+            status = None
+        if user_id == "" or user_id == 0:
+            user_id = None
+
         query = db.query(AccessLog)
 
-        # 应用筛选条件
         if status:
             if status not in ["成功", "失败"]:
                 raise HTTPException(status_code=400, detail="状态必须是'成功'或'失败'")

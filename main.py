@@ -7,7 +7,7 @@ import os
 
 from app.database import engine, Base
 from app.utils.mqtt_utils import mqtt_client
-from app.routers import users, logs, door
+from app.routers import users, logs, door, identify
 
 # 配置日志
 logging.basicConfig(
@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
 
     # 确保静态文件目录存在
     os.makedirs("static/faces", exist_ok=True)
-    os.makedirs("static/logs", exist_ok=True)
+    os.makedirs("static/access_images", exist_ok=True)
 
     yield
 
@@ -81,6 +81,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(users.router)
 app.include_router(logs.router)
 app.include_router(door.router)
+app.include_router(identify.router)
 
 
 @app.get("/", tags=["根路径"])

@@ -6,7 +6,7 @@ router = APIRouter(prefix="/door", tags=["门禁控制"])
 
 
 @router.post("/remote-open", response_model=RemoteOpenResponse, summary="远程开门")
-async def remote_open_door(request: RemoteOpenRequest):
+async def remote_open_door(request: RemoteOpenRequest = None):
     """
     通过MQTT发送远程开门指令
 
@@ -47,7 +47,7 @@ async def remote_open_door(request: RemoteOpenRequest):
 
 
 @router.post("/remote-close", response_model=RemoteOpenResponse, summary="远程关门")
-async def remote_close_door(request: RemoteOpenRequest):
+async def remote_close_door(request: RemoteOpenRequest = None):
     """
     通过MQTT发送远程关门指令
 

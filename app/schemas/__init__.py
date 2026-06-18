@@ -103,3 +103,17 @@ class ErrorResponse(BaseModel):
     """错误响应模型"""
     error: str
     detail: Optional[str] = None
+
+
+class FeatureUpdateRequest(BaseModel):
+    """特征更新请求模型（树莓派回调）"""
+    user_id: int = Field(..., description="用户ID")
+    face_vector: str = Field(..., description="人脸特征向量（JSON字符串）")
+    success: bool = Field(..., description="是否成功提取特征")
+    error_message: Optional[str] = Field(None, description="错误信息")
+
+
+class FeatureUpdateResponse(BaseModel):
+    """特征更新响应模型"""
+    message: str
+    user_id: int

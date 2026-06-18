@@ -7,8 +7,13 @@ python-multipart==0.0.6
 sqlalchemy==2.0.23
 
 # 图像处理
-numpy==1.24.3
-opencv-contrib-python
+numpy>=1.24.0
+opencv-contrib-python>=4.8.0
+
+# 人脸识别（PC后端使用，精度最高）
+insightface>=0.7.3
+onnxruntime>=1.16.0
+
 # MQTT
 paho-mqtt==1.6.1
 
@@ -18,3 +23,4 @@ pydantic-settings==2.1.0
 
 # 其他工具
 python-dotenv==1.0.0
+requests>=2.31.0
