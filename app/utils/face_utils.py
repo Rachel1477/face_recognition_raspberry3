@@ -111,6 +111,85 @@ class FaceProcessor:
         else:
             logger.error("人脸识别模型未初始化")
             return None
+
+    def detect_faces(self, image: np.ndarray) -> List[dict]:
+        """
+        检测图像中所有人脸的位置（用于调试）
+        
+        Args:
+            image: BGR 格式的图像
+            
+        Returns:
+            [{'bbox': [x1, y1, x2, y2], 'confidence': float, 'embedding': array}, ...]
+        """
+        results = []
+        
+        if self.app is not None:
+            try:
+                faces = self.app.get(image)
+                if faces:
+                    for face in faces:
+                        bbox = face.bbox.astype(int).tolist()  # [x1, y1, x2, y2]
+                        confidence = float(face.det_score) if hasattr(face, 'det_score') else 0.0
+                        embedding = face.embedding
+                        if embedding is not None:
+                            norm = np.linalg.norm(embedding)
+                            if norm > 0:
+                                embedding = embedding / norm
+                        results.append({
+                            'bbox': bbox,
+                            'confidence': round(confidence, 4),
+                            'embedding': embedding
+                        })
+            except Exception as e:
+                logger.error(f"insightface 人脸检测失败: {e}")
+        elif self.detector is not None:
+            try:
+                h, w = image.shape[:2]
+                self.detector.setInputSize((w, h))
+                success, faces = self.detector.detect(image)
+                if success and faces is not None:
+                    for face in faces:
+                        bbox = face[:4].astype(int).tolist()
+                        confidence = float(face[4])
+                        results.append({
+                            'bbox': bbox,
+                            'confidence': round(confidence, 4),
+                            'embedding': None
+                        })
+            except Exception as e:
+                logger.error(f"OpenCV 人脸检测失败: {e}")
+        
+        return results
+
+    def draw_face_box(self, image: np.ndarray, bbox: list, 
+                       label: str = "", color: tuple = (0, 255, 0)) -> np.ndarray:
+        """
+        在图片上绘制人脸框和标签
+        
+        Args:
+            image: BGR 格式的图像
+            bbox: [x1, y1, x2, y2]
+            label: 标签文字
+            color: BGR 颜色元组，绿色=(0,255,0)，红色=(0,0,255)
+            
+        Returns:
+            绘制后的图片
+        """
+        img = image.copy()
+        x1, y1, x2, y2 = bbox
+        
+        # 绘制矩形框
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+        
+        # 绘制标签背景
+        if label:
+            (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+            cv2.rectangle(img, (x1, y1 - h - 10), (x1 + w, y1), color, -1)
+            cv2.putText(img, label, (x1, y1 - 5), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        
+        return img
     
     def _extract_with_insightface(self, image: np.ndarray) -> Optional[np.ndarray]:
         """使用 insightface 提取特征"""

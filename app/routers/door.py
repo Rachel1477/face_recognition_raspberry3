@@ -14,17 +14,38 @@ async def remote_open_door(request: RemoteOpenRequest = None):
     门禁设备接收到指令后会执行开门操作。
     """
     try:
+        # 检查 MQTT 客户端是否存在
+        if mqtt_client is None or not hasattr(mqtt_client, 'connected'):
+            raise HTTPException(
+                status_code=503,
+                detail="MQTT服务未初始化"
+            )
+
         # 检查MQTT连接状态
-        if not mqtt_client.connected:
+        if not getattr(mqtt_client, 'connected', False):
             # 尝试重新连接
-            if not mqtt_client.connect():
+            try:
+                if not mqtt_client.connect():
+                    raise HTTPException(
+                        status_code=503,
+                        detail="MQTT服务不可用，无法发送开门指令"
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
                 raise HTTPException(
                     status_code=503,
-                    detail="MQTT服务不可用，无法发送开门指令"
+                    detail=f"MQTT服务不可用: {str(e)}"
                 )
 
         # 发送开门指令
-        success = mqtt_client.send_door_command("OPEN")
+        try:
+            success = mqtt_client.send_door_command("OPEN")
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"发送开门指令失败: {str(e)}"
+            )
 
         if success:
             return RemoteOpenResponse(
@@ -55,17 +76,38 @@ async def remote_close_door(request: RemoteOpenRequest = None):
     门禁设备接收到指令后会执行关门操作。
     """
     try:
+        # 检查 MQTT 客户端是否存在
+        if mqtt_client is None or not hasattr(mqtt_client, 'connected'):
+            raise HTTPException(
+                status_code=503,
+                detail="MQTT服务未初始化"
+            )
+
         # 检查MQTT连接状态
-        if not mqtt_client.connected:
+        if not getattr(mqtt_client, 'connected', False):
             # 尝试重新连接
-            if not mqtt_client.connect():
+            try:
+                if not mqtt_client.connect():
+                    raise HTTPException(
+                        status_code=503,
+                        detail="MQTT服务不可用，无法发送关门指令"
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
                 raise HTTPException(
                     status_code=503,
-                    detail="MQTT服务不可用，无法发送关门指令"
+                    detail=f"MQTT服务不可用: {str(e)}"
                 )
 
         # 发送关门指令
-        success = mqtt_client.send_door_command("CLOSE")
+        try:
+            success = mqtt_client.send_door_command("CLOSE")
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"发送关门指令失败: {str(e)}"
+            )
 
         if success:
             return RemoteOpenResponse(
