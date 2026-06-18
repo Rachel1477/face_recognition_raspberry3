@@ -25,8 +25,15 @@ DOOR_UNLOCK_DURATION = int(os.getenv("DOOR_UNLOCK_DURATION", 3))
 # 按键配置
 BUTTON_PIN = int(os.getenv("BUTTON_PIN", 24))  # 使用 BCM 编码的 GPIO 24
 
+# OLED 屏幕配置
+OLED_WIDTH = 128
+OLED_HEIGHT = 64
+OLED_I2C_ADDR = 0x3C
+OLED_FONT_PATH = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
+OLED_FONT_SIZE = 14
+
 # MQTT 配置
-MQTT_BROKER = os.getenv("MQTT_BROKER", "192.168.160.11")
+MQTT_BROKER = os.getenv("MQTT_BROKER", "192.168.173.11")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 MQTT_USERNAME = os.getenv("MQTT_USERNAME", "")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "")

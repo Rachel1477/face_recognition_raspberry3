@@ -26,6 +26,7 @@ from config import (
 )
 from mqtt_client import MQTTClient, DoorControlMQTT
 from gpio_controller import create_gpio_controller
+from oled_display import OLEDDisplay
 
 # 配置日志
 logging.basicConfig(
@@ -58,6 +59,9 @@ class PiDoorSystem:
         GPIO.setup(self.button_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         logger.info(f"按键初始化完成: GPIO {self.button_pin}")
         
+        # OLED 屏幕
+        self.oled_display = OLEDDisplay()
+        
         # MQTT
         self.mqtt_client = None
         self.door_mqtt = None
@@ -69,6 +73,9 @@ class PiDoorSystem:
         
         # 控制标志
         self.last_recognize_time = 0
+        
+        # 显示初始状态
+        self.oled_display.show_idle()
         
         logger.info("系统初始化完成")
 
@@ -132,6 +139,9 @@ class PiDoorSystem:
         Args:
             image_bytes: 压缩后的图片字节
         """
+        # 更新屏幕状态：正在识别
+        self.oled_display.show_recognizing()
+        
         def _do_request():
             try:
                 start_time = time.time()
@@ -154,18 +164,23 @@ class PiDoorSystem:
                         confidence = result.get('confidence', 0)
                         logger.info(f"✅ 识别通过: {user_name} (置信度: {confidence:.4f}, 耗时: {elapsed:.0f}ms)")
                         self.gpio_controller.unlock()
+                        self.oled_display.show_success(user_name)
                     else:
                         logger.info(f"❌ 识别失败: {result.get('message', 'Unknown')} (耗时: {elapsed:.0f}ms)")
-                        
+                        self.oled_display.show_failed()
                 else:
                     logger.error(f"识别请求失败: HTTP {response.status_code}")
+                    self.oled_display.show_failed()
                     
             except requests.Timeout:
                 logger.error("识别请求超时")
+                self.oled_display.show_failed()
             except requests.ConnectionError:
                 logger.error("无法连接到后端服务器")
+                self.oled_display.show_failed()
             except Exception as e:
                 logger.error(f"识别请求异常: {e}")
+                self.oled_display.show_failed()
         
         # 在后台线程中执行网络请求
         thread = threading.Thread(target=_do_request, daemon=True)
@@ -199,6 +214,9 @@ class PiDoorSystem:
                 if GPIO.input(self.button_pin) == GPIO.LOW:
                     logger.info("检测到按键按下，开始识别...")
                     
+                    # 更新屏幕状态：采集成功
+                    self.oled_display.show_captured()
+                    
                     # 连续抓几帧，直到拿到一张清晰的图
                     for _ in range(5):
                         ret, frame = self.cap.read()
@@ -211,7 +229,11 @@ class PiDoorSystem:
                         self._send_recognize_request(image_bytes)
                         
                         # 防抖/冷却：识别后等 2 秒，防止按一下触发很多次
+                        # 这段时间屏幕会显示成功/失败状态
                         time.sleep(2.0)
+                        
+                        # 重置屏幕状态：待激活
+                        self.oled_display.show_idle()
                 
                 # 为了不让 CPU 100% 占用，即使不采集也要小睡一下
                 time.sleep(0.05)
@@ -251,6 +273,9 @@ class PiDoorSystem:
         
         if self.mqtt_client:
             self.mqtt_client.disconnect()
+        
+        if self.oled_display:
+            self.oled_display.cleanup()
         
         logger.info("系统已停止")
 
