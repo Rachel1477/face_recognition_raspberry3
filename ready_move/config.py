@@ -5,7 +5,7 @@
 import os
 
 # 后端服务器配置
-BACKEND_URL = os.getenv("BACKEND_URL", "http://192.168.160.11:8000")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://192.168.173.11:8000")
 API_TIMEOUT = int(os.getenv("API_TIMEOUT", 10))
 
 # 摄像头配置
@@ -21,6 +21,9 @@ IMAGE_QUALITY = 85  # JPEG 压缩质量 (0-100)
 # GPIO 配置
 DOOR_RELAY_PIN = int(os.getenv("DOOR_RELAY_PIN", 18))
 DOOR_UNLOCK_DURATION = int(os.getenv("DOOR_UNLOCK_DURATION", 3))
+
+# 按键配置
+BUTTON_PIN = int(os.getenv("BUTTON_PIN", 24))  # 使用 BCM 编码的 GPIO 24
 
 # MQTT 配置
 MQTT_BROKER = os.getenv("MQTT_BROKER", "192.168.160.11")

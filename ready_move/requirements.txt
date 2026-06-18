@@ -11,5 +11,8 @@ requests>=2.31.0
 # MQTT
 paho-mqtt>=1.6.1
 
+# GPIO 控制
+RPi.GPIO>=0.7.1
+
 # 日志
 python-dotenv>=1.0.0

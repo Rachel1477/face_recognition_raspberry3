@@ -15,13 +15,14 @@ from typing import Optional
 
 import cv2
 import requests
+import RPi.GPIO as GPIO
 
 from config import (
     BACKEND_URL, CAMERA_INDEX, FRAME_WIDTH, FRAME_HEIGHT, FPS,
     MQTT_BROKER, MQTT_PORT, MQTT_USERNAME, MQTT_PASSWORD,
     MQTT_CLIENT_ID, MQTT_TOPIC_CONTROL, MQTT_TOPIC_STATUS,
     DOOR_RELAY_PIN, DOOR_UNLOCK_DURATION, API_TIMEOUT,
-    RECOGNIZE_INTERVAL, IMAGE_QUALITY
+    RECOGNIZE_INTERVAL, IMAGE_QUALITY, BUTTON_PIN
 )
 from mqtt_client import MQTTClient, DoorControlMQTT
 from gpio_controller import create_gpio_controller
@@ -50,6 +51,12 @@ class PiDoorSystem:
         
         # GPIO 控制
         self.gpio_controller = create_gpio_controller(DOOR_RELAY_PIN, DOOR_UNLOCK_DURATION)
+        
+        # 初始化按键 GPIO
+        self.button_pin = BUTTON_PIN
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.button_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        logger.info(f"按键初始化完成: GPIO {self.button_pin}")
         
         # MQTT
         self.mqtt_client = None
@@ -166,9 +173,9 @@ class PiDoorSystem:
 
     def capture_loop(self):
         """
-        视频捕获主循环
+        视频捕获主循环（按键触发识别）
         """
-        logger.info("启动视频捕获循环")
+        logger.info("启动视频捕获循环（按键触发模式）")
         
         self.cap = cv2.VideoCapture(CAMERA_INDEX)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
@@ -179,8 +186,6 @@ class PiDoorSystem:
             logger.error("无法打开摄像头")
             return
         
-        frame_count = 0
-        
         try:
             while self.running:
                 ret, frame = self.cap.read()
@@ -190,23 +195,26 @@ class PiDoorSystem:
                     time.sleep(0.1)
                     continue
                 
-                frame_count += 1
-                
-                # 每隔 RECOGNIZE_INTERVAL 帧发送一次识别请求
-                if frame_count % RECOGNIZE_INTERVAL == 0:
-                    # 检查时间间隔
-                    current_time = time.time()
-                    if current_time - self.last_recognize_time >= 1.0:
-                        self.last_recognize_time = current_time
-                        
-                        # 压缩并发送
+                # 检测按键是否按下（GPIO.LOW 表示按下）
+                if GPIO.input(self.button_pin) == GPIO.LOW:
+                    logger.info("检测到按键按下，开始识别...")
+                    
+                    # 连续抓几帧，直到拿到一张清晰的图
+                    for _ in range(5):
+                        ret, frame = self.cap.read()
+                        if ret:
+                            break
+                    
+                    if ret:
+                        # 压缩并发送识别请求
                         image_bytes = self._compress_image(frame)
                         self._send_recognize_request(image_bytes)
+                        
+                        # 防抖/冷却：识别后等 2 秒，防止按一下触发很多次
+                        time.sleep(2.0)
                 
-                # 实时显示视频流（可选）
-                # cv2.imshow('Door Camera', frame)
-                # if cv2.waitKey(1) & 0xFF == ord('q'):
-                #     break
+                # 为了不让 CPU 100% 占用，即使不采集也要小睡一下
+                time.sleep(0.05)
                     
         finally:
             if self.cap:
