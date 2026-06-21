@@ -1,6 +1,6 @@
-# 智能门禁系统后端（Phase 1）
+# 智能门禁系统后端（Phase 2）
 
-基于 **FastAPI + MySQL + SQLAlchemy + InsightFace + MQTT** 的智能门禁系统后端第一阶段实现。
+基于 **FastAPI + MySQL + SQLAlchemy + InsightFace + SpeakerVerifier + MQTT** 的智能门禁系统后端第二阶段实现，支持人脸+声纹双重验证。
 
 ---
 
@@ -22,14 +22,17 @@
 
 ## 项目概述
 
-智能门禁系统第一阶段实现以下核心功能：
+智能门禁系统第二阶段实现以下核心功能：
 
 | 功能模块 | 描述 |
 |---------|------|
-| 人脸注册 | 接收姓名+图片，提取 128 维人脸特征向量，保存到数据库及本地磁盘 |
+| 人脸注册 | 接收姓名+图片，提取 512 维人脸特征向量，保存到数据库及本地磁盘 |
+| 声纹注册 | 在人脸注册后，接收音频文件，提取声纹特征向量，保存到数据库 |
 | 人脸对比 | 将抓拍的人脸特征与数据库中所有特征进行余弦相似度比对 |
-| 访问日志 | 记录每次识别尝试的结果（成功/失败）、时间、抓拍图路径、匹配置信度 |
-| 人员管理 | 增删改查已注册人员 |
+| 声纹对比 | 将录制的语音特征与数据库中对应用户的声纹特征进行比对 |
+| 双重验证 | 人脸+声纹均通过才允许开门，记录验证标签 |
+| 访问日志 | 记录每次识别尝试的结果（成功/失败）、时间、抓拍图路径、匹配置信度、验证标签 |
+| 人员管理 | 增删改查已注册人员，支持独立删除声纹 |
 | 远程开门 | 通过 MQTT 向 `door/control` Topic 发送 OPEN 指令 |
 
 ---
@@ -45,6 +48,9 @@
 | SQLAlchemy | 2.0+ | ORM |
 | PyMySQL | 1.1+ | MySQL 驱动 |
 | InsightFace | 0.7+ | 人脸检测 + 特征提取 |
+| ONNX Runtime | 1.16+ | 声纹模型推理 |
+| Silero VAD | 1.0+ | 语音活动检测 |
+| Librosa | 0.10+ | 音频处理 |
 | OpenCV | 4.9+ | 图像预处理 |
 | NumPy | 1.26+ | 数值计算 |
 | Paho-MQTT | 2.0+ | MQTT 通信 |
@@ -61,7 +67,47 @@
 
 **相似度计算**：采用余弦相似度（Cosine Similarity），阈值默认设为 **0.5**，大于该值判定为同一人。
 
-### MQTT 通信
+### 声纹识别算法
+
+本项目采用 **SpeakerVerifier**（基于 ONNX Runtime），包含以下核心组件：
+
+| 组件 | 作用 | 输出 |
+|------|------|------|
+| Silero VAD | 语音活动检测 | 过滤静音，提取有效语音段 |
+| ResNet34 (ONNX) | 声纹特征提取 | 512 维声纹特征向量 |
+
+**相似度计算**：采用余弦相似度（Cosine Similarity），阈值默认设为 **0.6**，大于该值判定为同一人。
+
+**声纹注册与验证流程**：
+1. 注册时：录制 3-5 秒语音 → Silero VAD 提取有效语音 → ResNet34 提取特征 → 保存到数据库
+2. 验证时：录制语音 → 提取特征 → 与数据库中对应用户特征比对 → 判断相似度
+
+### 双重验证流程
+
+```
+按下按钮 → 采集图像 → 发送人脸识别请求
+    │
+    ▼
+人脸识别结果
+    │
+    ├── 失败 → 记录日志（标签: face_only）→ 显示失败
+    │
+    └── 成功
+        │
+        ├── 用户未注册声纹 → 允许通行（标签: face_only）
+        │
+        └── 用户已注册声纹 → 返回 need_voice
+            │
+            ▼
+        OLED 显示"请说话" → 录音 8 秒 → 发送声纹验证请求
+            │
+            ▼
+        声纹验证结果
+            │
+            ├── 通过 → 允许通行（标签: face_and_voice_passed）
+            │
+            └── 失败 → 记录日志（标签: face_passed_voice_failed）→ 显示失败
+```
 
 - **Broker**：可连接本地 Mosquitto 或阿里云/腾讯云 MQTT
 - **Topic**：
@@ -88,8 +134,9 @@ door-access-system/
 │   │
 │   ├── routers/
 │   │   ├── __init__.py
-│   │   ├── users.py                 # 用户注册、查询、删除接口
+│   │   ├── users.py                 # 用户注册、查询、删除、声纹注册接口
 │   │   ├── logs.py                  # 访问日志记录、查询接口
+│   │   ├── identify.py              # 人脸识别、声纹识别接口
 │   │   └── door.py                  # 远程开门/关门接口
 │   │
 │   ├── services/
@@ -97,11 +144,13 @@ door-access-system/
 │   │
 │   └── utils/
 │       ├── face_utils.py            # 人脸检测、特征提取、比对工具
+│       ├── speaker_utils.py         # 声纹提取、比对工具
 │       └── mqtt_utils.py            # MQTT 客户端封装
-│
+
 ├── static/
 │   ├── faces/                       # 注册人脸原图存储目录
-│   └── access_images/              # 识别抓拍图存储目录
+│   ├── access_images/              # 识别抓拍图存储目录
+│   └── voices/                      # 声纹音频存储目录
 │
 ├── models/                          # InsightFace 模型文件缓存目录
 │
@@ -124,6 +173,8 @@ door-access-system/
 | name | VARCHAR(100) | NOT NULL | 姓名 |
 | face_vector | TEXT | NULL | 人脸特征向量，JSON 数组字符串，512 维浮点数 |
 | face_image_path | VARCHAR(255) | NULL | 人脸原图本地路径 |
+| voice_vector | TEXT | NULL | 声纹特征向量，JSON 数组字符串，512 维浮点数 |
+| voice_audio_path | VARCHAR(255) | NULL | 声纹音频本地路径 |
 | created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
 | updated_at | DATETIME | DEFAULT CURRENT_TIMESTAMP ON UPDATE | 更新时间 |
 
@@ -133,9 +184,10 @@ door-access-system/
 |--------|------|------|------|
 | id | INT | PK, AUTO_INCREMENT | 主键 |
 | user_id | INT | FK -> User.id, NULLABLE | 匹配到的用户 ID，识别失败时为 NULL |
-| status | VARCHAR(20) | NOT NULL | 识别结果：success / failed |
-| confidence | FLOAT | NULL | 余弦相似度得分 |
+| status | VARCHAR(20) | NOT NULL | 识别结果：成功 / 失败 |
+| confidence | VARCHAR(20) | NULL | 相似度得分（字符串存储） |
 | image_path | VARCHAR(255) | NULL | 抓拍图本地路径 |
+| verification_tag | VARCHAR(50) | NULL | 验证标签：face_only / face_and_voice_passed / face_passed_voice_failed |
 | timestamp | DATETIME | DEFAULT CURRENT_TIMESTAMP | 识别时间 |
 
 ---
@@ -228,16 +280,20 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIR = os.path.join(BASE_DIR, "app", "models")
 
-# 余弦相似度阈值
-COSINE_THRESHOLD = 0.5
+# 人脸识别配置
+COSINE_THRESHOLD = 0.5  # 人脸余弦相似度阈值
+
+# 声纹识别配置
+VOICE_THRESHOLD = 0.6  # 声纹余弦相似度阈值
 
 # 静态文件目录
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 FACES_DIR = os.path.join(STATIC_DIR, "faces")
 ACCESS_IMAGES_DIR = os.path.join(STATIC_DIR, "access_images")
+VOICE_DIR = os.path.join(STATIC_DIR, "voices")
 ```
 
-> 可根据实际环境修改 `COSINE_THRESHOLD`，值越大越严格。
+> 可根据实际环境修改 `COSINE_THRESHOLD` 和 `VOICE_THRESHOLD`，值越大越严格。
 
 ### `.env` — 后端动态配置（必须修改！）
 
@@ -271,22 +327,33 @@ const String BASE_URL = "http://192.168.1.100:8000";
 
 | 方法 | 路径 | 描述 | 参数 |
 |------|------|------|------|
-| POST | `/register` | 注册用户 | `name: str`, `image: UploadFile` |
+| POST | `/users/register` | 注册用户（人脸） | `name: str`, `image: UploadFile` |
+| POST | `/users/{user_id}/register-voice` | 注册声纹 | `user_id: int`, `audio: UploadFile` |
+| DELETE | `/users/{user_id}/delete-voice` | 删除声纹 | `user_id: int` |
 | GET | `/users` | 获取用户列表 | `skip: int=0`, `limit: int=100` |
-| DELETE | `/user/{id}` | 删除用户 | `id: int` |
+| GET | `/users/{user_id}` | 获取用户详情 | `user_id: int` |
+| DELETE | `/users/{user_id}` | 删除用户 | `user_id: int` |
+
+### 身份识别
+
+| 方法 | 路径 | 描述 | 参数 |
+|------|------|------|------|
+| POST | `/identify/` | 人脸识别（仅识别，不记录日志） | `image: UploadFile` |
+| POST | `/identify/with-log` | 人脸识别并记录日志（支持双重验证） | `image: UploadFile` |
+| POST | `/identify/voice` | 声纹验证 | `audio: UploadFile`, `user_id: int` |
 
 ### 访问日志
 
 | 方法 | 路径 | 描述 | 参数 |
 |------|------|------|------|
-| POST | `/log` | 记录日志 | `user_id: int?`, `status: str`, `image: UploadFile` |
+| POST | `/logs` | 记录日志 | `user_id: int?`, `status: str`, `image: UploadFile` |
 | GET | `/logs` | 分页查询日志 | `page: int=1`, `page_size: int=20` |
 
 ### 门禁控制
 
 | 方法 | 路径 | 描述 | 参数 |
 |------|------|------|------|
-| POST | `/remote-open` | 远程开门 | 无（body 为空） |
+| POST | `/door/open` | 远程开门 | 无（body 为空） |
 
 ---
 
@@ -327,27 +394,52 @@ ArcFace 提取 512 维特征向量 → 归一化为单位向量
 
 ## 使用示例
 
-### 1. 注册用户（curl）
+### 1. 注册用户（人脸）
 
 ```bash
-curl -X POST "http://localhost:8000/register" \
+curl -X POST "http://localhost:8000/users/register" \
   -F "name=张三" \
   -F "image=@./photo.jpg"
 ```
 
-### 2. 记录识别日志
+### 2. 注册声纹
 
 ```bash
-curl -X POST "http://localhost:8000/log" \
-  -F "status=success" \
-  -F "user_id=1" \
+curl -X POST "http://localhost:8000/users/1/register-voice" \
+  -F "audio=@./voice.wav"
+```
+
+### 3. 人脸识别（双重验证流程第一步）
+
+```bash
+curl -X POST "http://localhost:8000/identify/with-log" \
   -F "image=@./captured.jpg"
 ```
 
-### 3. 远程开门
+**返回示例（人脸通过，需要声纹验证）：**
+```json
+{
+  "recognized": true,
+  "user_id": 1,
+  "name": "张三",
+  "confidence": 0.85,
+  "access_granted": false,
+  "status": "need_voice",
+  "message": "人脸验证通过，请进行声纹验证"
+}
+```
+
+### 4. 声纹验证（双重验证流程第二步）
 
 ```bash
-curl -X POST "http://localhost:8000/remote-open"
+curl -X POST "http://localhost:8000/identify/voice?user_id=1" \
+  -F "audio=@./voice_test.wav"
+```
+
+### 5. 远程开门
+
+```bash
+curl -X POST "http://localhost:8000/door/open"
 ```
 
 ---
@@ -380,6 +472,12 @@ A: 请先执行 `pip install -r requirements.txt`。
 **Q: 人脸识别精度不够？**
 A: 在 `app/config.py` 中调整 `COSINE_THRESHOLD`，或确保注册照片光线充足、正脸无遮挡。
 
+**Q: 声纹识别精度不够？**
+A: 在 `app/config.py` 中调整 `VOICE_THRESHOLD`（默认 0.6），或确保注册音频环境安静、录制清晰。
+
+**Q: 无法提取声纹特征？**
+A: 请确保录制了至少 1 秒的有效语音，环境噪声不要太大，音频格式为 WAV 或 MP3。
+
 **Q: 手机 App 无法连接后端？**
 A: 检查 `api.dart` 中的 `BASE_URL` 是否为后端电脑的实际局域网 IP，而非 `localhost`。
 
@@ -388,12 +486,14 @@ A: 确保 MQTT Broker 地址正确，且门禁设备已订阅 `door/control` Top
 
 ---
 
-## 下一阶段计划（Phase 2）
+## 下一阶段计划（Phase 3）
 
 - [ ] 接入 Redis 做特征向量缓存，加速比对
 - [ ] 接入 WebSocket 实现识别结果实时推送
 - [ ] 管理员权限校验（JWT Token）
 - [ ] 部署到云服务器（Docker + Nginx）
+- [ ] 树莓派端代码实现（人脸采集、音频录制、双重验证流程）
+- [ ] App 端代码实现（人脸注册、声纹录制、远程开门）
 
 ---
 

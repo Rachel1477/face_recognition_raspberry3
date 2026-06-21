@@ -1,17 +1,23 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
+
 from app.schemas import RemoteOpenRequest, RemoteOpenResponse
 from app.utils.mqtt_utils import mqtt_client
+from app.database import get_db
+from app.models import AccessLog
 
 router = APIRouter(prefix="/door", tags=["门禁控制"])
 
 
 @router.post("/remote-open", response_model=RemoteOpenResponse, summary="远程开门")
-async def remote_open_door(request: RemoteOpenRequest = None):
+async def remote_open_door(request: RemoteOpenRequest = None, db: Session = Depends(get_db)):
     """
     通过MQTT发送远程开门指令
 
     此接口会向MQTT Topic "door/control" 发送 "OPEN" 指令，
     门禁设备接收到指令后会执行开门操作。
+
+    成功后会记录访问日志（tag: app主人权限一键开门）
     """
     try:
         # 检查 MQTT 客户端是否存在
@@ -48,6 +54,17 @@ async def remote_open_door(request: RemoteOpenRequest = None):
             )
 
         if success:
+            # 记录访问日志 - app主人权限一键开门
+            access_log = AccessLog(
+                user_id=None,
+                status="成功",
+                confidence=None,
+                image_path=None,
+                verification_tag="app主人权限一键开门"
+            )
+            db.add(access_log)
+            db.commit()
+
             return RemoteOpenResponse(
                 message="开门指令已发送",
                 status="success"
@@ -61,6 +78,7 @@ async def remote_open_door(request: RemoteOpenRequest = None):
     except HTTPException:
         raise
     except Exception as e:
+        db.rollback()
         raise HTTPException(
             status_code=500,
             detail=f"远程开门失败: {str(e)}"

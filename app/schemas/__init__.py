@@ -18,6 +18,8 @@ class UserResponse(UserBase):
     id: int
     face_vector: Optional[str] = None
     face_image_path: Optional[str] = None
+    voice_vector: Optional[str] = None
+    voice_audio_path: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -36,6 +38,7 @@ class AccessLogBase(BaseModel):
     user_id: Optional[int] = None
     status: str = Field(..., description="访问状态：成功/失败")
     confidence: Optional[str] = None
+    verification_tag: Optional[str] = None
 
 
 class AccessLogCreate(AccessLogBase):
@@ -48,6 +51,7 @@ class AccessLogResponse(AccessLogBase):
     id: int
     image_path: Optional[str] = None
     timestamp: datetime
+    verification_tag: Optional[str] = None
     user: Optional[UserResponse] = None
 
     class Config:
@@ -117,3 +121,36 @@ class FeatureUpdateResponse(BaseModel):
     """特征更新响应模型"""
     message: str
     user_id: int
+
+
+class VoiceRegisterRequest(BaseModel):
+    """声纹注册请求模型"""
+    user_id: int = Field(..., description="用户ID")
+
+
+class VoiceRegisterResponse(BaseModel):
+    """声纹注册响应模型"""
+    message: str
+    user_id: int
+    voice_audio_path: str
+
+
+class VoiceIdentifyRequest(BaseModel):
+    """声纹识别请求模型"""
+    user_id: int = Field(..., description="用户ID（人脸匹配成功后传入）")
+
+
+class VoiceIdentifyResponse(BaseModel):
+    """声纹识别响应模型"""
+    success: bool = Field(..., description="是否识别成功")
+    user_id: Optional[int] = None
+    confidence: Optional[float] = None
+    message: str = Field(..., description="识别结果消息")
+
+
+class IdentifyWithLogResponse(BaseModel):
+    """带日志的识别响应模型"""
+    success: bool = Field(..., description="是否完全通过（人脸+声纹）")
+    status: str = Field(..., description="状态：access_granted / need_voice / denied")
+    user_id: Optional[int] = None
+    message: str = Field(..., description="识别结果消息")

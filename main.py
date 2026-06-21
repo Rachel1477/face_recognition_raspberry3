@@ -43,6 +43,7 @@ async def lifespan(app: FastAPI):
     # 确保静态文件目录存在
     os.makedirs("static/faces", exist_ok=True)
     os.makedirs("static/access_images", exist_ok=True)
+    os.makedirs("static/voices", exist_ok=True)
 
     yield
 
@@ -60,8 +61,8 @@ async def lifespan(app: FastAPI):
 # 创建FastAPI应用
 app = FastAPI(
     title="智能门禁系统 API",
-    description="基于人脸识别的智能门禁系统后端API",
-    version="1.0.0",
+    description="基于人脸识别和声纹识别的双重验证智能门禁系统后端API",
+    version="2.0.0",
     lifespan=lifespan
 )
 

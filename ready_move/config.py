@@ -1,6 +1,7 @@
 """
 配置文件 - 树莓派门禁系统（瘦身版）
 人脸识别逻辑迁移到后端 PC
+支持人脸 + 声纹双重验证
 """
 import os
 
@@ -31,6 +32,12 @@ OLED_HEIGHT = 64
 OLED_I2C_ADDR = 0x3C
 OLED_FONT_PATH = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
 OLED_FONT_SIZE = 14
+
+# 声纹录音配置
+VOICE_SAMPLE_RATE = 16000  # 录音采样率
+VOICE_RECORD_DURATION = 8  # 录音时长（秒）
+VOICE_CHANNELS = 1  # 单声道
+VOICE_TEMP_FILE = "/tmp/temp_voice.wav"  # 临时录音文件路径
 
 # MQTT 配置
 MQTT_BROKER = os.getenv("MQTT_BROKER", "192.168.173.11")

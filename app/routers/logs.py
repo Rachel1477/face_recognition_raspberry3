@@ -140,6 +140,7 @@ def get_access_logs(
                 "image_path": log.image_path,
                 "timestamp": log.timestamp,
                 "confidence": log.confidence,
+                "verification_tag": log.verification_tag,
                 "user": None
             }
 
@@ -192,6 +193,7 @@ def get_access_log(
             "image_path": log.image_path,
             "timestamp": log.timestamp,
             "confidence": log.confidence,
+            "verification_tag": log.verification_tag,
             "user": None
         }
 
@@ -268,11 +270,13 @@ def get_access_statistics(
         # 失败次数
         fail_count = db.query(AccessLog).filter(AccessLog.status == "失败").count()
 
-        # 今日访问次数
-        from datetime import date
-        today = date.today()
+        # 今日访问次数 - 使用正确的日期范围
+        from datetime import datetime
+        today_start = datetime.combine(datetime.now().date(), datetime.min.time())
+        today_end = datetime.combine(datetime.now().date(), datetime.max.time())
         today_count = db.query(AccessLog).filter(
-            AccessLog.timestamp >= today
+            AccessLog.timestamp >= today_start,
+            AccessLog.timestamp <= today_end
         ).count()
 
         return {

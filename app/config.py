@@ -12,7 +12,11 @@ MODEL_DIR = os.path.join(BASE_DIR, "app", "models")
 # 人脸识别配置
 COSINE_THRESHOLD = 0.5  # 余弦相似度阈值（insightface buffalo_l 使用 0.5）
 
+# 声纹识别配置
+VOICE_THRESHOLD = 0.6  # 声纹相似度阈值
+
 # 静态文件目录
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 FACES_DIR = os.path.join(STATIC_DIR, "faces")
 ACCESS_IMAGES_DIR = os.path.join(STATIC_DIR, "access_images")
+VOICE_DIR = os.path.join(STATIC_DIR, "voices")

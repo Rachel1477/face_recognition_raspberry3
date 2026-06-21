@@ -11,6 +11,8 @@ class User(Base):
     name = Column(String(100), nullable=False, index=True)
     face_vector = Column(Text, nullable=True)  # 存储128维特征向量，JSON格式
     face_image_path = Column(String(255), nullable=True)  # 存储人脸图片路径
+    voice_vector = Column(Text, nullable=True)  # 存储声纹特征向量，JSON格式
+    voice_audio_path = Column(String(255), nullable=True)  # 存储声纹音频路径
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -31,6 +33,7 @@ class AccessLog(Base):
     image_path = Column(String(255), nullable=True)  # 抓拍图路径
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     confidence = Column(String(50), nullable=True)  # 识别置信度
+    verification_tag = Column(String(100), nullable=True)  # 验证标签：face_only / face_passed_voice_failed / face_and_voice_passed
 
     # 关联用户
     user = relationship("User", back_populates="access_logs")
