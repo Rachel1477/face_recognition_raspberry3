@@ -1,6 +1,7 @@
 """
 GPIO 控制模块
 控制树莓派 GPIO 引脚实现开门动作（舵机版本）
+包含 LED 灯控制
 """
 import logging
 import threading
@@ -39,6 +40,7 @@ class ServoGPIOController:
         self.is_unlocked = False
         self._lock = threading.Lock()
         self._pwm = None
+        self._on_door_closed_callback = None  # 关门回调
 
         if GPIO_AVAILABLE:
             GPIO.setmode(GPIO.BCM)
@@ -52,6 +54,23 @@ class ServoGPIOController:
             logger.info(f"舵机 GPIO 初始化成功，引脚: {servo_pin}，初始位置: 关门 (0°)")
         else:
             logger.info(f"GPIO 模拟模式，舵机引脚: {servo_pin}")
+
+    def set_door_closed_callback(self, callback):
+        """
+        设置关门回调函数
+
+        Args:
+            callback: 关门时要调用的回调函数
+        """
+        self._on_door_closed_callback = callback
+
+    def _notify_door_closed(self):
+        """通知门已关闭"""
+        if self._on_door_closed_callback:
+            try:
+                self._on_door_closed_callback()
+            except Exception as e:
+                logger.error(f"关门回调执行失败: {e}")
 
     def _set_angle(self, duty_cycle: float):
         """设置舵机角度"""
@@ -98,6 +117,9 @@ class ServoGPIOController:
             self._set_angle(SERVO_LOCKED_DUTY)
             logger.info("自动关门（舵机逆时针旋转120°复位）")
 
+        # 通知门已关闭（回调）
+        self._notify_door_closed()
+
     def lock(self):
         """手动关门：逆时针旋转120°复位"""
         with self._lock:
@@ -110,6 +132,9 @@ class ServoGPIOController:
             # 逆时针旋转120°（关门复位）
             self._set_angle(SERVO_LOCKED_DUTY)
             logger.info("手动关门（舵机逆时针旋转120°复位）")
+
+        # 通知门已关闭（回调）
+        self._notify_door_closed()
 
     def get_status(self) -> str:
         """
@@ -137,7 +162,20 @@ class MockServoController:
         self.unlock_duration = unlock_duration
         self.is_unlocked = False
         self._lock = threading.Lock()
+        self._on_door_closed_callback = None
         logger.info(f"模拟舵机控制器初始化，引脚: {servo_pin}")
+
+    def set_door_closed_callback(self, callback):
+        """设置关门回调函数"""
+        self._on_door_closed_callback = callback
+
+    def _notify_door_closed(self):
+        """通知门已关闭"""
+        if self._on_door_closed_callback:
+            try:
+                self._on_door_closed_callback()
+            except Exception as e:
+                logger.error(f"关门回调执行失败: {e}")
 
     def unlock(self, duration: Optional[float] = None):
         duration = duration or self.unlock_duration
@@ -155,6 +193,7 @@ class MockServoController:
         with self._lock:
             self.is_unlocked = False
             logger.info("[模拟] 自动关门（舵机逆时针旋转120°复位）")
+        self._notify_door_closed()
 
     def lock(self):
         with self._lock:
@@ -162,6 +201,7 @@ class MockServoController:
                 return
             self.is_unlocked = False
             logger.info("[模拟] 手动关门（舵机逆时针旋转120°复位）")
+        self._notify_door_closed()
 
     def get_status(self) -> str:
         return "UNLOCKED" if self.is_unlocked else "LOCKED"
@@ -185,3 +225,97 @@ def create_gpio_controller(servo_pin: int, unlock_duration: float = 3.0):
         return ServoGPIOController(servo_pin, unlock_duration)
     else:
         return MockServoController(servo_pin, unlock_duration)
+
+
+class LEDController:
+    """LED 灯控制器"""
+
+    def __init__(self, green_pin: int, blue_pin: int):
+        """
+        初始化 LED 控制器
+
+        Args:
+            green_pin: 绿灯引脚（BCM编号）- 开门时亮
+            blue_pin: 蓝灯引脚（BCM编号）- 人脸识别通过后亮
+        """
+        self.green_pin = green_pin
+        self.blue_pin = blue_pin
+        self._green_on = False
+        self._blue_on = False
+
+        if GPIO_AVAILABLE:
+            GPIO.setup(green_pin, GPIO.OUT)
+            GPIO.setup(blue_pin, GPIO.OUT)
+            # 初始状态：全部熄灭
+            GPIO.output(green_pin, GPIO.LOW)
+            GPIO.output(blue_pin, GPIO.LOW)
+            logger.info(f"LED 初始化完成，绿灯: GPIO {green_pin}，蓝灯: GPIO {blue_pin}")
+        else:
+            logger.info(f"LED 模拟模式，绿灯: GPIO {green_pin}，蓝灯: GPIO {blue_pin}")
+
+    def green_on(self):
+        """打开绿灯"""
+        self._green_on = True
+        if GPIO_AVAILABLE:
+            GPIO.output(self.green_pin, GPIO.HIGH)
+        logger.info(f"绿灯亮 (GPIO {self.green_pin})")
+
+    def green_off(self):
+        """关闭绿灯"""
+        self._green_on = False
+        if GPIO_AVAILABLE:
+            GPIO.output(self.green_pin, GPIO.LOW)
+        logger.info(f"绿灯灭 (GPIO {self.green_pin})")
+
+    def blue_on(self):
+        """打开蓝灯"""
+        self._blue_on = True
+        if GPIO_AVAILABLE:
+            GPIO.output(self.blue_pin, GPIO.HIGH)
+        logger.info(f"蓝灯亮 (GPIO {self.blue_pin})")
+
+    def blue_off(self):
+        """关闭蓝灯"""
+        self._blue_on = False
+        if GPIO_AVAILABLE:
+            GPIO.output(self.blue_pin, GPIO.LOW)
+        logger.info(f"蓝灯灭 (GPIO {self.blue_pin})")
+
+    def all_off(self):
+        """关闭所有灯"""
+        self.green_off()
+        self.blue_off()
+
+    def face_passed(self):
+        """人脸识别通过：亮蓝灯"""
+        self.all_off()
+        self.blue_on()
+
+    def door_opened(self):
+        """开门：亮绿灯（保持蓝灯）"""
+        self.green_on()
+
+    def door_closed(self):
+        """关门：熄灭所有灯"""
+        self.all_off()
+
+    def get_status(self) -> dict:
+        """获取 LED 状态"""
+        return {
+            "green": self._green_on,
+            "blue": self._blue_on
+        }
+
+
+def create_led_controller(green_pin: int, blue_pin: int) -> LEDController:
+    """
+    创建 LED 控制器
+
+    Args:
+        green_pin: 绿灯引脚
+        blue_pin: 蓝灯引脚
+
+    Returns:
+        LED 控制器实例
+    """
+    return LEDController(green_pin, blue_pin)

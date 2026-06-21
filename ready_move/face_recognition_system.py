@@ -27,10 +27,11 @@ from config import (
     MQTT_CLIENT_ID, MQTT_TOPIC_CONTROL, MQTT_TOPIC_STATUS,
     DOOR_RELAY_PIN, DOOR_UNLOCK_DURATION, API_TIMEOUT,
     RECOGNIZE_INTERVAL, IMAGE_QUALITY, BUTTON_PIN,
-    VOICE_SAMPLE_RATE, VOICE_RECORD_DURATION, VOICE_CHANNELS, VOICE_TEMP_FILE
+    VOICE_SAMPLE_RATE, VOICE_RECORD_DURATION, VOICE_CHANNELS, VOICE_TEMP_FILE,
+    GREEN_LED_PIN, BLUE_LED_PIN
 )
 from mqtt_client import MQTTClient, DoorControlMQTT
-from gpio_controller import create_gpio_controller
+from gpio_controller import create_gpio_controller, create_led_controller
 from oled_display import OLEDDisplay
 
 # 配置日志
@@ -70,6 +71,12 @@ class PiDoorSystem:
 
         # GPIO 控制
         self.gpio_controller = create_gpio_controller(DOOR_RELAY_PIN, DOOR_UNLOCK_DURATION)
+
+        # 设置关门回调：熄灭所有灯并恢复 OLED
+        self.gpio_controller.set_door_closed_callback(self._on_door_closed)
+
+        # LED 控制
+        self.led_controller = create_led_controller(GREEN_LED_PIN, BLUE_LED_PIN)
 
         # 初始化按键 GPIO
         self.button_pin = BUTTON_PIN
@@ -126,8 +133,21 @@ class PiDoorSystem:
     def _remote_unlock(self):
         """远程开门回调"""
         logger.info("收到远程开门指令")
+
+        # 亮绿灯（表示开门）
+        self.led_controller.door_opened()
+
+        # 显示远程开门提示
+        self.oled_display.show_success("房主")
+
         self.gpio_controller.unlock()
         self.door_mqtt.publish_status("UNLOCKED", "Remote unlock via MQTT")
+
+    def _on_door_closed(self):
+        """关门回调：熄灭所有灯并恢复 OLED 显示"""
+        logger.info("执行关门回调：熄灭所有灯，恢复 OLED")
+        self.led_controller.all_off()
+        self.oled_display.show_idle()
 
     def _compress_image(self, frame) -> bytes:
         """
@@ -259,6 +279,9 @@ class PiDoorSystem:
             # 人脸通过，需要声纹验证
             logger.info(f"人脸验证通过: {user_name}，进入声纹验证...")
 
+            # 亮蓝灯（表示人脸识别通过）
+            self.led_controller.face_passed()
+
             # OLED 显示请说话
             self.oled_display.show_please_speak(8)
 
@@ -267,6 +290,7 @@ class PiDoorSystem:
 
             if audio_path is None:
                 logger.error("录音失败")
+                self.led_controller.all_off()
                 self.oled_display.show_face_pass_voice_fail()
                 return
 
@@ -280,22 +304,29 @@ class PiDoorSystem:
                 # 声纹也通过了，允许开门
                 voice_confidence = voice_result.get('confidence', 0)
                 logger.info(f"声纹验证通过: {user_name} (置信度: {voice_confidence:.4f})")
+
+                # 亮绿灯（表示开门）
+                self.led_controller.door_opened()
+
                 self.gpio_controller.unlock()
                 self.oled_display.show_voice_pass(user_name)
             else:
                 # 声纹验证失败
                 voice_confidence = voice_result.get('confidence', 0)
                 logger.info(f"声纹验证失败: {user_name} (置信度: {voice_confidence:.4f})")
+                self.led_controller.all_off()
                 self.oled_display.show_face_pass_voice_fail()
 
         elif status == 'granted':
             # 预留：未来可能需要的直接通过场景
             logger.info(f"识别通过: {user_name} (置信度: {confidence:.4f})")
+            self.led_controller.door_opened()
             self.gpio_controller.unlock()
             self.oled_display.show_success(user_name)
         else:
             # 人脸验证失败
             logger.info(f"识别失败: {result.get('message', 'Unknown')}")
+            self.led_controller.all_off()
             self.oled_display.show_failed()
 
     def _send_recognize_request(self, image_bytes: bytes):

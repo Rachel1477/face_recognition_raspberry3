@@ -23,6 +23,10 @@ IMAGE_QUALITY = 85  # JPEG 压缩质量 (0-100)
 DOOR_RELAY_PIN = int(os.getenv("DOOR_RELAY_PIN", 18))
 DOOR_UNLOCK_DURATION = int(os.getenv("DOOR_UNLOCK_DURATION", 3))
 
+# LED 配置
+GREEN_LED_PIN = int(os.getenv("GREEN_LED_PIN", 21))   # 绿灯 - GPIO 29 (Pin 40) - 开门时亮
+BLUE_LED_PIN = int(os.getenv("BLUE_LED_PIN", 20))     # 蓝灯 - GPIO 28 (Pin 38) - 人脸识别通过后亮
+
 # 按键配置
 BUTTON_PIN = int(os.getenv("BUTTON_PIN", 24))  # 使用 BCM 编码的 GPIO 24
 
