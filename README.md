@@ -1,6 +1,6 @@
 # 智能门禁系统（完整版本）
 
-基于 **FastAPI + SQLite + SQLAlchemy + InsightFace + SpeakerVerifier + MQTT** 的智能门禁系统，支持人脸+声纹双重验证，包含后端、树莓派端和Flutter App端。
+基于 **FastAPI + SQLite + SQLAlchemy + InsightFace + SpeakerVerifier + MQTT** 的智能门禁系统，支持人脸+声纹双重验证，包含后端、树莓派端和Flutter App端。真的能用，不是跑不起来的玩具
 
 ---
 
